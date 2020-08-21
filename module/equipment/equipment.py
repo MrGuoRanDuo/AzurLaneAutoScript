@@ -17,26 +17,34 @@ class Equipment(UI):
     equipment_has_take_on = False
 
     def _view_swipe(self, distance, check_button=EQUIPMENT_OPEN):
+        swipe_count = 0
         swipe_timer = Timer(5, count=10)
+        self.ensure_no_info_bar(timeout=3)
         SWIPE_CHECK.load_color(self.device.image)
         while 1:
             if not swipe_timer.started() or swipe_timer.reached():
                 swipe_timer.reset()
                 self.device.swipe(vector=(distance, 0), box=SWIPE_AREA.area, random_range=SWIPE_RANDOM_RANGE,
                                   padding=0, duration=(0.1, 0.12), name='EQUIP_SWIPE')
+                self.wait_until_stable(check_button)
+                swipe_count += 1
 
             self.device.screenshot()
             if SWIPE_CHECK.match(self.device.image):
+                if swipe_count > 1:
+                    logger.warning('Same ship on multiple swipes')
+                    return False
                 continue
 
             if self.appear(check_button, offset=(30, 30)) and not SWIPE_CHECK.match(self.device.image):
-                break
+                logger.info('New ship detected on swipe')
+                return True
 
     def equip_view_next(self, check_button=EQUIPMENT_OPEN):
-        self._view_swipe(distance=-SWIPE_DISTANCE, check_button=check_button)
+        return self._view_swipe(distance=-SWIPE_DISTANCE, check_button=check_button)
 
     def equip_view_prev(self, check_button=EQUIPMENT_OPEN):
-        self._view_swipe(distance=SWIPE_DISTANCE, check_button=check_button)
+        return self._view_swipe(distance=SWIPE_DISTANCE, check_button=check_button)
 
     def equip_enter(self, click_button, check_button=EQUIPMENT_OPEN, long_click=True):
         enter_timer = Timer(10)
@@ -68,6 +76,10 @@ class Equipment(UI):
         Returns:
             bool: if changed.
         """
+        if index <= 0 or index > 5:
+            logger.warning(f'Sidebar index cannot be clicked, {index}, limit to 1 through 5 only')
+            return False
+
         current = 0
         total = 0
 
@@ -83,7 +95,9 @@ class Equipment(UI):
                 break
         if not current:
             logger.warning('No ship details sidebar active.')
-        if total == 4:
+        if total == 3:
+            current = 4 - current
+        elif total == 4:
             current = 5 - current
         elif total == 5:
             current = 6 - current
@@ -94,7 +108,13 @@ class Equipment(UI):
         if current == index:
             return False
 
-        self.device.click(DETAIL_SIDEBAR[0, total - index])
+        diff = total - index
+        if total == 3 and index == 3:
+            logger.warning('Ship is PRY, equipment research not supported')
+        elif diff >= 0:
+            self.device.click(DETAIL_SIDEBAR[0, diff])
+        else:
+            logger.warning(f'Target index {index} cannot be clicked for this ship')
         return True
 
     def equip_sidebar_ensure(self, index, skip_first_screenshot=True):
@@ -106,7 +126,17 @@ class Equipment(UI):
                 3 for limit break.
                 2 for gem / equipment.
                 1 for detail.
+
+            Returns:
+                bool: whether sidebar could be ensured
+                      at most 3 attempts are made before
+                      return False otherwise True
         """
+        if index <= 0 or index > 5:
+            logger.warning(f'Sidebar index cannot be ensured, {index}, limit 1 through 5 only')
+            return False
+
+        counter = 0
         while 1:
             if skip_first_screenshot:
                 skip_first_screenshot = False
@@ -114,10 +144,14 @@ class Equipment(UI):
                 self.device.screenshot()
 
             if self._equip_sidebar_click(index):
+                if counter >= 2:
+                    logger.warning('Sidebar could not be ensured')
+                    return False
+                counter += 1
                 self.device.sleep((0.3, 0.5))
                 continue
             else:
-                break
+                return True
 
     def _equip_take_off_one(self):
         bar_timer = Timer(5)

@@ -15,6 +15,7 @@ from module.retire.retirement import Retirement
 class MapOperation(MysteryHandler, FleetPreparation, Retirement, FastForwardHandler):
     map_cat_attack_timer = Timer(2)
     map_clear_percentage_prev = -1
+    map_clear_percentage_timer = Timer(0.3, count=1)
 
     def fleet_switch_click(self):
         """
@@ -54,10 +55,11 @@ class MapOperation(MysteryHandler, FleetPreparation, Retirement, FastForwardHand
 
             # Map preparation
             if map_timer.reached() and self.handle_map_preparation():
-                if self.handle_map_clear_mode_stop():
-                    self.enter_map_cancel()
-                    raise ScriptEnd(f'Reach condition: {self.config.CLEAR_MODE_STOP_CONDITION}')
+                self.map_get_info()
                 self.handle_fast_forward()
+                if self.handle_map_stop():
+                    self.enter_map_cancel()
+                    raise ScriptEnd(f'Reach condition: {self.config.STOP_IF_MAP_REACH}')
                 self.device.click(MAP_PREPARATION)
                 map_timer.reset()
                 campaign_timer.reset()
@@ -126,14 +128,18 @@ class MapOperation(MysteryHandler, FleetPreparation, Retirement, FastForwardHand
         """
         if not self.appear(MAP_PREPARATION):
             self.map_clear_percentage_prev = -1
+            self.map_clear_percentage_timer.reset()
             return False
 
         percent = self.get_map_clear_percentage()
         if abs(percent - self.map_clear_percentage_prev) < 0.02:
             self.map_clear_percentage_prev = percent
-            return True
+            if self.map_clear_percentage_timer.reached():
+                return True
+
         else:
             self.map_clear_percentage_prev = percent
+            self.map_clear_percentage_timer.reset()
             return False
 
     def withdraw(self):

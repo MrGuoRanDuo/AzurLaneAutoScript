@@ -1,12 +1,13 @@
 from datetime import datetime, timedelta
 
 from module.base.timer import Timer
+from module.base.utils import get_color
 from module.device.app import AppControl
 from module.device.control import Control
 from module.device.screenshot import Screenshot
+from module.exception import GameStuckError
 from module.handler.assets import GET_MISSION
 from module.logger import logger
-from module.base.utils import get_color
 
 
 class Device(Screenshot, Control, AppControl):
@@ -55,9 +56,9 @@ class Device(Screenshot, Control, AppControl):
 
         return self.image
 
-    def click(self, button):
+    def click(self, button, record_check=True):
         self.stuck_record_clear()
-        return super().click(button)
+        return super().click(button, record_check=record_check)
 
     def check_screen(self):
         """
@@ -107,3 +108,6 @@ class Device(Screenshot, Control, AppControl):
         logger.warning('Wait too long')
         logger.warning(f'Waiting for {self.stuck_record}')
         self.stuck_record_clear()
+
+        if self.config.ENABLE_GAME_STUCK_HANDLER:
+            raise GameStuckError(f'Wait too long')

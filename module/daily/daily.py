@@ -1,22 +1,21 @@
 import numpy as np
 
-from module.base.ocr import Digit
 from module.base.utils import get_color
-from module.combat.combat import Combat
 from module.daily.assets import *
 from module.equipment.fleet_equipment import DailyEquipment
 from module.logger import logger
+from module.ocr.ocr import Digit
+from module.reward.reward import Reward
 from module.ui.ui import page_daily, page_campaign, BACK_ARROW, DAILY_CHECK
 
 DAILY_MISSION_LIST = [DAILY_MISSION_1, DAILY_MISSION_2, DAILY_MISSION_3]
-OCR_REMAIN = Digit(OCR_REMAIN, letter=(255, 255, 255), back=(127, 127, 127), length=1, white_list='0123')
-OCR_DAILY_FLEET_INDEX = Digit(OCR_DAILY_FLEET_INDEX, letter=(90, 154, 255), back=(24, 32, 49), length=1,
-                              white_list='123456')
+OCR_REMAIN = Digit(OCR_REMAIN, threshold=128, alphabet='0123')
+OCR_DAILY_FLEET_INDEX = Digit(OCR_DAILY_FLEET_INDEX, letter=(90, 154, 255), threshold=128, alphabet='123456')
 RECORD_OPTION = ('DailyRecord', 'daily')
 RECORD_SINCE = (0,)
 
 
-class Daily(Combat, DailyEquipment):
+class Daily(Reward, DailyEquipment):
     daily_current: int
     daily_checked: list
     daily_auto_checked = False
@@ -50,6 +49,14 @@ class Daily(Combat, DailyEquipment):
         self.device.screenshot()
 
     def daily_execute(self, remain, fleet):
+        """
+        Args:
+            remain (int): Remain daily challenge count.
+            fleet (int): Index of fleet to use.
+
+        Returns:
+            bool: True if success, False if daily locked.
+        """
         logger.hr(f'Daily {self.daily_current}')
         logger.attr('Fleet', fleet)
 
@@ -60,6 +67,11 @@ class Daily(Combat, DailyEquipment):
             return self.appear(DAILY_ENTER_CHECK) or self.appear(BACK_ARROW)
 
         self.ui_click(click_button=DAILY_ENTER, check_button=daily_enter_check, appear_button=DAILY_CHECK)
+        if self.appear(DAILY_LOCKED):
+            logger.info('Daily locked')
+            self.ui_click(click_button=BACK_ARROW, check_button=DAILY_CHECK)
+            self.device.sleep((1, 1.2))
+            return False
 
         button = DAILY_MISSION_LIST[self.config.DAILY_CHOOSE[self.daily_current] - 1]
         for n in range(remain):
@@ -73,6 +85,7 @@ class Daily(Combat, DailyEquipment):
 
         self.ui_click(click_button=BACK_ARROW, check_button=DAILY_CHECK)
         self.device.sleep((1, 1.2))
+        return True
 
     def daily_check(self, n=None):
         if not n:
@@ -111,6 +124,11 @@ class Daily(Combat, DailyEquipment):
                 self.daily_check()
                 self.next()
                 continue
+            if not fleets[self.daily_current]:
+                logger.info(f'No fleet set on daily_current: {self.daily_current}, skip')
+                self.daily_check()
+                self.next()
+                continue
             if not self.is_active():
                 self.daily_check()
                 self.next()
@@ -140,8 +158,13 @@ class Daily(Combat, DailyEquipment):
 
     def run(self):
         self.equipment_take_on()
+        self.reward_backup_daily_reward_settings()
+
         self.daily_run()
+
+        self.reward_recover_daily_reward_settings()
         self.equipment_take_off()
+
         self.ui_goto_main()
 
     def record_executed_since(self):

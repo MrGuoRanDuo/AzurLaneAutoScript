@@ -6,7 +6,7 @@ from retrying import retry
 from module.base.timer import Timer
 from module.base.utils import *
 from module.device.connection import Connection
-from module.exception import ScriptError
+from module.exception import GameTooManyClickError
 from module.logger import logger
 
 
@@ -25,10 +25,6 @@ class Control(Connection):
     def time(self):
         return time.time()
 
-    @staticmethod
-    def _point2str(x, y):
-        return '(%s,%s)' % (str(int(x)).rjust(4), str(int(y)).rjust(4))
-
     def click_record_check(self, button):
         """
         Args:
@@ -40,22 +36,24 @@ class Control(Connection):
         if sum([1 if str(prev) == str(button) else 0 for prev in self.click_record]) >= 12:
             logger.warning(f'Too many click for a button: {button}')
             logger.info(f'History click: {[str(prev) for prev in self.click_record]}')
-            raise ScriptError(f'Too many click for a button: {button}')
+            raise GameTooManyClickError(f'Too many click for a button: {button}')
         else:
             self.click_record.append(str(button))
 
         return False
 
-    def click(self, button):
+    def click(self, button, record_check=True):
         """Method to click a button.
 
         Args:
             button (button.Button): AzurLane Button instance.
+            record_check (bool):
         """
-        self.click_record_check(button)
+        if record_check:
+            self.click_record_check(button)
         x, y = random_rectangle_point(button.button)
         logger.info(
-            'Click %s @ %s' % (self._point2str(x, y), button)
+            'Click %s @ %s' % (point2str(x, y), button)
         )
         method = self.config.DEVICE_CONTROL_METHOD
         if method == 'uiautomator2':
@@ -73,6 +71,7 @@ class Control(Connection):
         self.adb_shell(['input', 'tap', str(x), str(y)], serial=self.serial)
 
     def multi_click(self, button, n, interval=(0.1, 0.2)):
+        self.click_record_check(button)
         click_timer = Timer(0.1)
         for _ in range(n):
             remain = ensure_time(interval) - click_timer.current()
@@ -80,7 +79,7 @@ class Control(Connection):
                 self.sleep(remain)
 
             click_timer.reset()
-            self.click(button)
+            self.click(button, record_check=False)
 
     def long_click(self, button, duration=(1, 1.2)):
         """Method to long click a button.
@@ -92,7 +91,7 @@ class Control(Connection):
         x, y = random_rectangle_point(button.button)
         duration = ensure_time(duration)
         logger.info(
-            'Click %s @ %s, %s' % (self._point2str(x, y), button, duration)
+            'Click %s @ %s, %s' % (point2str(x, y), button, duration)
         )
         self.device.long_click(x, y, duration=duration)
 
@@ -112,7 +111,7 @@ class Control(Connection):
         duration = ensure_time(duration)
         start, end = random_rectangle_vector(vector, box, random_range=random_range, padding=padding)
         logger.info(
-            'Swipe %s -> %s, %s' % (self._point2str(*start), self._point2str(*end), duration)
+            'Swipe %s -> %s, %s' % (point2str(*start), point2str(*end), duration)
         )
         fx, fy, tx, ty = np.append(start, end).tolist()
         self.device.swipe(fx, fy, tx, ty, duration=duration)
@@ -147,13 +146,13 @@ class Control(Connection):
             x, y, second = data
             if index == 0:
                 self.device.touch.down(x, y)
-                logger.info(self._point2str(x, y) + ' down')
+                logger.info(point2str(x, y) + ' down')
             elif index - length == -1:
                 self.device.touch.up(x, y)
-                logger.info(self._point2str(x, y) + ' up')
+                logger.info(point2str(x, y) + ' up')
             else:
                 self.device.touch.move(x, y)
-                logger.info(self._point2str(x, y) + ' move')
+                logger.info(point2str(x, y) + ' move')
             self.sleep(second)
 
     def drag(self, p1, p2, segments=1, shake=(0, 15), point_random=(-10, -10, 10, 10), shake_random=(-5, -5, 5, 5),
