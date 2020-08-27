@@ -26,7 +26,10 @@ class Camera(InfoHandler):
         name = 'MAP_SWIPE_' + '_'.join([str(int(round(x))) for x in vector])
         if np.any(np.abs(vector) > self.config.MAP_SWIPE_DROP):
             # Map grid fit
-            distance = self.view.swipe_base * self.config.MAP_SWIPE_MULTIPLY
+            if self.config.DEVICE_CONTROL_METHOD == 'minitouch':
+                distance = self.view.swipe_base * self.config.MAP_SWIPE_MULTIPLY_MINITOUCH
+            else:
+                distance = self.view.swipe_base * self.config.MAP_SWIPE_MULTIPLY
             vector = distance * vector
 
             vector = -vector
@@ -91,7 +94,7 @@ class Camera(InfoHandler):
                 logger.info('Perspective error cause by info bar. Waiting.')
                 self.handle_info_bar()
                 return self.update(camera=camera)
-            elif self.appear(IN_STAGE):
+            elif self.appear(IN_STAGE, offset=(5, 5)):
                 logger.warning('Image is in stage')
                 raise CampaignEnd('Image is in stage')
             elif not self.appear(IN_MAP):
